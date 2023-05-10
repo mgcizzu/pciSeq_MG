@@ -1,27 +1,19 @@
-""" Functions for extracting the boundaries of the cells """
-
-# WARNING -- WARNING -- WARNING
-# NOTE: 30-Nov-2020: I am using pydip to get the cell boundaries. It is a lot faster but I need to
-# further test this and compare the cell boundaries with the previous way i used to do it
-
 import cv2
 import pandas as pd
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.ndimage import binary_erosion
-from multiprocessing.dummy import Pool as ThreadPool
-from multiprocessing import cpu_count
+from multiprocessing import Pool, cpu_count
 import diplib as dip
 import time
 import logging
 
-# logging.basicConfig(
-#     level=logging.INFO,
-#     format="%(asctime)s:%(levelname)s:%(message)s"
-# )
-#
-# logger = logging.getLogger()
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s:%(levelname)s:%(message)s"
+)
 
+logger = logging.getLogger()
 
 
 def cell_boundaries(stage, cell_props):
@@ -68,22 +60,21 @@ def cell_boundaries(stage, cell_props):
     return res.sort_values(['label'], ascending=[True])
 
 
-
 def collate_borders_par(stage, labels):
     n = max(1, cpu_count() - 1)
-    pool = ThreadPool(16)
-    results = {}
-    pool.map(collate_borders_helper(stage, results), labels)
+    pool = Pool(n)
+    results = pool.map(collate_borders_helper(stage), labels)
     pool.close()
     pool.join()
-    return results
+    return dict(results)
 
-def collate_borders_helper(stage, results):
+
+def collate_borders_helper(stage):
     def inner_fun(label):
         logger.info('label: %d. Finding the cell boundaries' % label)
         label_image = stage.collate_arrays(stage.merge_register[label])
         offset_x, offset_y = stage.find_offset(stage.merge_register[label])
-        results[label] = np.array(get_label_contours(label_image, label, offset_x, offset_y))
+        return label, np.array(get_label_contours(label_image, label, offset_x, offset_y))
     return inner_fun
 
 def obj_outline(tile, cell_props):
