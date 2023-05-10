@@ -3,7 +3,6 @@ Functions to prepare the data for pciSeq. The label image and spots are parsed a
 lies within the cell boundaries then the corresponding cell id is recorded.
 Cell centroids and cell areas are also calculated.
 """
-
 import numpy as np
 import pandas as pd
 import skimage.measure as skmeas
@@ -11,6 +10,13 @@ from typing import Tuple
 from scipy.sparse import coo_matrix, csr_matrix
 from pciSeq.src.preprocess.cell_borders import extract_borders_dip
 from pciSeq.src.cell_call.log_config import logger
+import multiprocessing as mp
+
+
+def inside_cell_worker(label_image, spots, result_queue):
+    m = label_image[spots.y, spots.x]
+    out = np.asarray(m)
+    result_queue.put(out[0])
 
 
 def inside_cell(label_image, spots) -> np.array:
@@ -22,10 +28,29 @@ def inside_cell(label_image, spots) -> np.array:
         pass
     else:
         raise Exception('label_image should be of type "csr_matrix" ')
-    m = label_image[spots.y, spots.x]
-    out = np.asarray(m)
-    return out[0]
 
+    num_processes = mp.cpu_count()
+    spots_split = np.array_split(spots, num_processes)
+
+    result_queue = mp.Queue()
+    processes = []
+
+    for i in range(num_processes):
+        process = mp.Process(target=inside_cell_worker, args=(label_image, spots_split[i], result_queue))
+        processes.append(process)
+        process.start()
+
+    # Collect results from the worker processes
+    results = []
+    for _ in range(num_processes):
+        result = result_queue.get()
+        results.append(result)
+
+    # Wait for all processes to finish
+    for process in processes:
+        process.join()
+
+    return np.concatenate(results)
 
 def remap_labels(coo):
     """
