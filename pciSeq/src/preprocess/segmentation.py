@@ -192,29 +192,25 @@ def watershed(img_url):
 
 
 if __name__ == "__main__":
-
     img_url = r"D:\Home\Dimitris\OneDrive - University College London\Data\David\Midbrain Sequencing Data\data\background_image\background_image.tif"
-    coo, CellMap_0 = watershed(img_url)
+    pool = Pool()  # Create a multiprocessing pool
 
-    sparse.save_npz('coo_matrix.npz', coo)
+    def process_image(url):
+        coo, CellMap_0 = watershed(url)
+        sparse.save_npz('coo_matrix.npz', coo)
+        my_image = cv2.imread(url, cv2.IMREAD_GRAYSCALE)
+        overlay = label2rgb(coo.toarray(), image=my_image, bg_label=0)
+        my_dpi = 72
+        fig, ax = plt.subplots(figsize=(6000/my_dpi, 6000/my_dpi), dpi=my_dpi)
+        plt.imshow(overlay)
+        ax.set_axis_off()
+        plt.tight_layout()
+        plt.show()
+        fig.savefig('david_segmented.tif', dpi=200)
+        print(coo.data.max())
+        print('done')
 
-    my_image = cv2.imread(img_url, cv2.IMREAD_GRAYSCALE)
-    overlay = label2rgb(coo.toarray(), image=my_image, bg_label=0)
-    # overlay = label2rgb(coo.toarray(), bg_label=0, bg_color=(1,1,1)) # white background
-    # plt.imshow(overlay[:, :, 1], cmap='gray', interpolation='none')
-    my_dpi = 72
-    fig, ax = plt.subplots(figsize=(6000/my_dpi, 6000/my_dpi), dpi=my_dpi)
-    plt.imshow(overlay)
-    ax.set_axis_off()
-    plt.tight_layout()
-    plt.show()
+    pool.apply_async(process_image, args=(img_url,))  # Run the process_image function in parallel
 
-    fig.savefig('david_segmented.tif', dpi=200)
-
-    print(coo.data.max())
-    print('done')
-
-    # https://stackoverflow.com/questions/5260232/matlab-octave-bwdist-in-python-or-c
-
-    # v = np.ones_like(i)
-    # mat = coo_matrix((v, (i, j)), shape=(n, n))
+    pool.close()  # Close the multiprocessing pool
+    pool.join()  # Wait for all processes to complete
